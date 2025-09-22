@@ -1,7 +1,9 @@
+import asyncio
 import streamlit as st
 
 from services import prompts
-from helpers import util
+from ui.components import sidebar
+from ui.interactions import chat_handler, book_handler
 
 st.set_page_config(
     page_title="Quick Chat",
@@ -9,10 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-import helpers.sidebar
-import asyncio
-
-helpers.sidebar.show()
+sidebar.show()
 
 st.header("Quick Chat")
 st.write("Get instant answers to your software development and coding questions.")
@@ -41,8 +40,8 @@ for message in [m for m in st.session_state.messages if m["role"] != "system"]:
 # React to the user prompt
 if prompt := st.chat_input("Ask a software development or coding question..."):
     if ask_book:
-        asyncio.run(util.ask_book(st.session_state.messages, prompt))
+        asyncio.run(book_handler.ask_book(st.session_state.messages, prompt))
         st.rerun()
     else:
-        asyncio.run(util.chat(st.session_state.messages, prompt))
+        asyncio.run(chat_handler.chat(st.session_state.messages, prompt))
         st.rerun()

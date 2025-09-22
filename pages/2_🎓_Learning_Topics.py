@@ -1,10 +1,11 @@
 import asyncio
 
 import streamlit as st
-import helpers.sidebar
-import helpers.util
-import services.prompts
+
 import services.llm
+import services.prompts
+from ui.components import sidebar
+from ui.interactions import chat_handler
 
 st.set_page_config(
     page_title="Learning Topics",
@@ -14,7 +15,7 @@ st.set_page_config(
 
 st.header("Learning Topics")
 
-helpers.sidebar.show()
+sidebar.show()
 
 # Add a sidebar option to select a learner level
 learner_level = st.sidebar.selectbox("I'd like my answer as if I were a:",
@@ -35,5 +36,4 @@ if answer_button or answer_button_sb:
     learning_prompt = services.prompts.learning_prompt(learner_level, response_format, topic)
     messages = services.llm.create_conversation_starter(services.prompts.system_learning_prompt())
     messages.append({"role": "user", "content": learning_prompt})
-    asyncio.run(helpers.util.run_conversation(messages, advice))
-
+    asyncio.run(chat_handler.run_conversation(messages, advice))

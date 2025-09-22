@@ -2,10 +2,8 @@ import os
 import traceback
 from typing import List, Dict, AsyncGenerator, Tuple
 
-import openai
-from openai import AsyncOpenAI
-
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from openai import OpenAIError, OpenAI
 
 # Load .env file
@@ -14,7 +12,9 @@ load_dotenv()
 
 openai_model = os.getenv('OPENAI_API_MODEL')
 
-def converse_sync(prompt: str, messages: List[Dict[str, str]], model="gpt-3.5-turbo") -> Tuple[str, List[Dict[str, str]]]:
+def converse_sync(prompt: str, messages: List[Dict[str, str]], model=None) -> Tuple[str, List[Dict[str, str]]]:
+    if model is None:
+        model = openai_model
     client = OpenAI(
         api_key=os.getenv('OPENAI_API_KEY'),
         base_url=os.getenv('OPENAI_API_BASE_URL'))
@@ -35,13 +35,14 @@ def converse_sync(prompt: str, messages: List[Dict[str, str]], model="gpt-3.5-tu
 
     return response, messages
 
-async def converse(messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+async def converse(messages: List[Dict[str, str]], max_tokens: int = 1600) -> AsyncGenerator[str, None]:
     """
     Given a conversation history, generate an iterative response of strings from the OpenAI API.
 
     :param messages: a conversation history with the following format:
     `[ { "role": "user", "content": "Hello, how are you?" },
        { "role": "assistant", "content": "I am doing well, how can I help you today?" } ]`
+    :param max_tokens: maximum number of tokens to generate (default 1600)
 
     :return: a generator of delta string responses
     """
@@ -50,7 +51,7 @@ async def converse(messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
     try:
         async for chunk in await aclient.chat.completions.create(model=openai_model,
                                                                  messages=messages,
-                                                                 max_tokens=1600,
+                                                                 max_tokens=max_tokens,
                                                                  stream=True):
             content = chunk.choices[0].delta.content
             if content:

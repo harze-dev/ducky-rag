@@ -1,9 +1,8 @@
 import streamlit as st
+from dotenv import load_dotenv
 
-import helpers.sidebar
-from args_parser import parse_args
+from ui.components import sidebar
 
-parse_args()
 
 st.set_page_config(
     page_title="Ducky",
@@ -12,7 +11,7 @@ st.set_page_config(
 )
 
 
-helpers.sidebar.show()
+sidebar.show()
 
 st.toast("Welcome to Ducky!", icon="🐥")
 
