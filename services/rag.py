@@ -78,7 +78,7 @@ async def __chunk_prompt(pages_text: List[Tuple[int, str]], chunk_size: int = 15
     Split text into chunks suitable for embedding.
 
     Note: For a good chunking implementation example, see:
-    http://aitools.cs.vt.edu:8888/edit/module5/util.py
+    http://aitools.cs.vt.edu:8888/edit/module5/chunking-pruning-tutorial.ipynb
 
     Hint: Consider using one chunk per page as a starting strategy.
     This makes it easier to track context and display relevant pages.
