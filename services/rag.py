@@ -5,7 +5,7 @@ import os
 import sentence_transformers
 import tiktoken as tkn
 from PIL import Image
-from PyPDF2 import PdfFileReader
+from PyPDF2 import PdfReader
 from openai import OpenAI
 from pdf2image import convert_from_path
 from sklearn.neighbors import NearestNeighbors
@@ -32,46 +32,110 @@ async def ask_book(query: str, return_image: bool = False):
     # Source PDF path
     pdf_path = "data/ThePragmaticProgrammer.pdf"
 
-    # TODO: Implement embedding management
-    # 1. Check if embeddings exist in CSV_FILE_PATH
-    # 2. If not:
-    #    - Extract text from PDF using __extract_text_from_pdf()
-    #    - Chunk the text (see chunking strategy note below)
-    #    - Calculate embeddings using OpenAI API
-    #    - Save to CSV for future use
-    # 3. Load embeddings from CSV
-    pass
+    # Embedding management
+    import json
+    from services import llm
 
-    # TODO: Implement semantic search
-    # 1. Set up nearest neighbors search with sklearn
-    # 2. Get embedding for user's query
-    # 3. Find most relevant context using cosine similarity
-    pass
+    if os.path.exists(CSV_FILE_PATH):
+        # Load cached embeddings
+        embeddings_data = load_embeddings_from_csv(CSV_FILE_PATH)
+    else:
+        # Extract and chunk the PDF
+        pages = __extract_text_from_pdf(pdf_path)
+        chunks = await __chunk_prompt(pages)
+        docs = [c[1] for c in chunks]
+        page_numbers = [c[0] for c in chunks]
 
-    # TODO: Implement answer generation
-    # 1. Format prompt with context and query
-    # 2. Get response from LLM (NOTE: use services.llm.converse_sync method for this)
-    # 3. Package results with page number and context
-    pass
+        # Compute embeddings locally
+        embeddings = await __calculate_embeddings(docs)
 
-    # TODO: Optional - Handle page image extraction
-    # 1. Convert PDF page to image
-    # 2. Return as PNG bytes
-    pass
+        # Save to CSV for future runs
+        save_embeddings_to_csv(
+            CSV_FILE_PATH,
+            document_name="ThePragmaticProgrammer",
+            page_numbers=page_numbers,
+            embeddings=embeddings,
+            contexts=docs,
+        )
+        embeddings_data = [
+            {
+                "document_name": "ThePragmaticProgrammer",
+                "page_number": pn,
+                "embedding": emb,
+                "context": ctx,
+            }
+            for pn, emb, ctx in zip(page_numbers, embeddings, docs)
+        ]
+
+    # Semantic search
+    # Build matrix of embeddings
+    vectors = np.array([d["embedding"] for d in embeddings_data])
+    nn = NearestNeighbors(n_neighbors=3, metric="cosine")
+    nn.fit(vectors)
+
+    # Embed the query
+    query_emb = LocalEmbeddingGenerator().generate_single_embedding(query)
+
+    # Retrieve top‑k nearest chunks
+    distances, indices = nn.kneighbors([query_emb], n_neighbors=3)
+    top_idx = indices[0][0]
+    top_chunk = embeddings_data[top_idx]
+    page_number = top_chunk["page_number"]
+    context = top_chunk["context"]
+
+    # Answer generation
+    prompt = f"""You are a helpful assistant. Use the following excerpt from *The Pragmatic Programmer* (page {page_number}) to answer the user's question.
+
+Excerpt:
+\"\"\"{context}\"\"\"
+
+Question: {query}
+
+Provide a concise answer."""
+    answer, _ = llm.converse_sync(prompt, [])
+
+    # Optional page image extraction
+    image_data = None
+    if return_image:
+        try:
+            image_data = __extract_page_as_image(pdf_path, page_number)
+        except Exception:
+            image_data = None
+
+    # Return the assembled result
+    return {
+        "answer": answer,
+        "page_number": page_number,
+        "context": context,
+        "image_data": image_data,
+    }
 
 def __extract_text_from_pdf(pdf_path: str) -> List[Tuple[int, str]]:
     """
     Extract text content from each page of the PDF.
     Returns: List of (page_number, page_text) tuples
     """
-    pass
+    pages = []
+    with open(pdf_path, "rb") as f:
+        reader = PdfReader(f)
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text()
+            pages.append((i + 1, text or ""))
+    return pages
 
 def __extract_page_as_image(pdf_path: str, page_number: int) -> bytes:
     """
     Convert a specific PDF page to a PNG image.
     Returns: Raw PNG image data as bytes
     """
-    pass
+    # pdf2image uses 1‑based page numbers
+    images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number)
+    if not images:
+        return b""
+    img = images[0]
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 async def __chunk_prompt(pages_text: List[Tuple[int, str]], chunk_size: int = 1500, overlap: int = 50) -> List[Tuple[int, str]]:
     """
@@ -90,7 +154,21 @@ async def __chunk_prompt(pages_text: List[Tuple[int, str]], chunk_size: int = 15
 
     Returns: List of (page_number, chunk_text) tuples
     """
-    pass
+    encoding = tkn.encoding_for_model("gpt-3.5-turbo")
+    chunks: List[Tuple[int, str]] = []
+    for page_num, text in pages_text:
+        tokens = encoding.encode(text)
+        if len(tokens) <= chunk_size:
+            chunks.append((page_num, text))
+        else:
+            start = 0
+            while start < len(tokens):
+                end = min(start + chunk_size, len(tokens))
+                chunk_tokens = tokens[start:end]
+                chunk_text = encoding.decode(chunk_tokens)
+                chunks.append((page_num, chunk_text))
+                start += chunk_size - overlap
+    return chunks
 
 # TODO: Use this local embedding generator to embed text without network API calls
 LOCAL_EMBEDDING_MODEL = "all-mpnet-base-v2"  # Better accuracy local model (~420MB)
@@ -151,7 +229,14 @@ async def __calculate_embeddings(documents: List[str], batch_size: int = 20) -> 
 
     Returns: List of embedding vectors (each vector is List[float])
     """
-    pass
+    generator = LocalEmbeddingGenerator()
+    embeddings: List[List[float]] = []
+    # Process in batches to avoid memory spikes
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i : i + batch_size]
+        batch_emb = generator.generate_embeddings(batch)
+        embeddings.extend(batch_emb)
+    return embeddings
 
 def save_embeddings_to_csv(file_path: str, document_name: str, page_numbers: List[int], embeddings: List[List[float]], contexts: List[str]):
     """
@@ -167,7 +252,15 @@ def save_embeddings_to_csv(file_path: str, document_name: str, page_numbers: Lis
         embeddings: List of embedding vectors
         contexts: List of text chunks
     """
-    pass
+    import json
+
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, mode="w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.writer(csvfile)
+        # Write header
+        writer.writerow(["document_name", "page_number", "embedding", "context"])
+        for pn, emb, ctx in zip(page_numbers, embeddings, contexts):
+            writer.writerow([document_name, pn, json.dumps(emb), ctx])
 
 def load_embeddings_from_csv(file_path: str) -> List[dict]:
     """
@@ -179,4 +272,20 @@ def load_embeddings_from_csv(file_path: str) -> List[dict]:
         - embedding: List[float]
         - context: str
     """
-    pass
+    import json
+
+    embeddings = []
+    if not os.path.exists(file_path):
+        return embeddings
+    with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            embeddings.append(
+                {
+                    "document_name": row["document_name"],
+                    "page_number": int(row["page_number"]),
+                    "embedding": json.loads(row["embedding"]),
+                    "context": row["context"],
+                }
+            )
+    return embeddings

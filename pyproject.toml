@@ -3,7 +3,7 @@ name = "cs5740-project-rag"
 version = "2025.09"
 description = "Ducky - AI-powered software developer assistant"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "streamlit",
     "python-dotenv",
@@ -16,7 +16,16 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "pdf2image>=1.17.0",
     "sentence-transformers>=2.2.0",
-    "torch>=2.0.0",
+
+    # Force NumPy 1.x so older wheels (e.g., torch 2.2.2) work
+    "numpy<2 ; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+
+    # Keep SciPy/SciKit within NumPy-1.x-compatible ranges (only if you use them)
+    # "scipy<1.14 ; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+    # "scikit-learn<1.6 ; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+
+    "torch==2.2.2 ; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+
     "streamlit-ace>=0.1.1",
     "streamlit-monaco>=0.1.3",
 ]
