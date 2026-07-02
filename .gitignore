@@ -1,6 +1,10 @@
 ########################################################################
 # Python - https://github.com/github/gitignore/blob/master/Python.gitignore
 ########################################################################
+# env
+.env
+.env.backup.*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
