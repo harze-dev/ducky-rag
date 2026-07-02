@@ -5,7 +5,7 @@ import os
 import sentence_transformers
 import tiktoken as tkn
 from PIL import Image
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
 from openai import OpenAI
 from pdf2image import convert_from_path
 from sklearn.neighbors import NearestNeighbors
@@ -25,7 +25,7 @@ async def ask_book(query: str, return_image: bool = False):
         "answer": str,           # Generated response using context
         "page_number": int,      # Page where context was found
         "context": str,          # Text chunk used for answer
-        "image_data": bytes      # Optional PNG of page if return_image=True
+        "page_pdf_data": bytes   # Optional one-page PDF if return_image=True
     }
     """
 
@@ -95,19 +95,19 @@ Provide a concise answer."""
     answer, _ = llm.converse_sync(prompt, [])
 
     # Optional page image extraction
-    image_data = None
+    page_pdf_data = None
     if return_image:
         try:
-            image_data = __extract_page_as_image(pdf_path, page_number)
+            page_pdf_data = __extract_page_as_pdf(pdf_path, page_number)
         except Exception:
-            image_data = None
+            page_pdf_data = None
 
     # Return the assembled result
     return {
         "answer": answer,
         "page_number": page_number,
         "context": context,
-        "image_data": image_data,
+        "page_pdf_data": page_pdf_data,
     }
 
 def __extract_text_from_pdf(pdf_path: str) -> List[Tuple[int, str]]:
@@ -123,18 +123,16 @@ def __extract_text_from_pdf(pdf_path: str) -> List[Tuple[int, str]]:
             pages.append((i + 1, text or ""))
     return pages
 
-def __extract_page_as_image(pdf_path: str, page_number: int) -> bytes:
+def __extract_page_as_pdf(pdf_path: str, page_number: int) -> bytes:
     """
-    Convert a specific PDF page to a PNG image.
-    Returns: Raw PNG image data as bytes
+    Extract a single PDF page as a one-page PDF.
+    Returns: Raw PDF bytes for the selected page.
     """
-    # pdf2image uses 1‑based page numbers
-    images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number)
-    if not images:
-        return b""
-    img = images[0]
+    reader = PdfReader(pdf_path)
+    writer = PdfWriter()
+    writer.add_page(reader.pages[page_number - 1])
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    writer.write(buf)
     return buf.getvalue()
 
 async def __chunk_prompt(pages_text: List[Tuple[int, str]], chunk_size: int = 1500, overlap: int = 50) -> List[Tuple[int, str]]:
