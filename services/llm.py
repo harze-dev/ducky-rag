@@ -10,14 +10,20 @@ from openai import OpenAIError, OpenAI
 load_dotenv()
 
 
-openai_model = os.getenv('OPENAI_API_MODEL')
+openai_model = os.getenv('OPENAI_API_MODEL', 'gpt-5.5')
+
+
+def _client_kwargs():
+    kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
+    base_url = os.getenv("OPENAI_API_BASE_URL")
+    if base_url:
+        kwargs["base_url"] = base_url
+    return kwargs
 
 def converse_sync(prompt: str, messages: List[Dict[str, str]], model=None) -> Tuple[str, List[Dict[str, str]]]:
     if model is None:
         model = openai_model
-    client = OpenAI(
-        api_key=os.getenv('OPENAI_API_KEY'),
-        base_url=os.getenv('OPENAI_API_BASE_URL'))
+    client = OpenAI(**_client_kwargs())
 
     # Add the user's message to the list of messages
     if messages is None:
@@ -46,8 +52,7 @@ async def converse(messages: List[Dict[str, str]], max_tokens: int = 1600) -> As
 
     :return: a generator of delta string responses
     """
-    aclient = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'),
-                          base_url=os.getenv('OPENAI_API_BASE_URL'))
+    aclient = AsyncOpenAI(**_client_kwargs())
     try:
         async for chunk in await aclient.chat.completions.create(model=openai_model,
                                                                  messages=messages,
