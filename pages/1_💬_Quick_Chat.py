@@ -1,7 +1,7 @@
 import asyncio
-import base64
+import io
 import streamlit as st
-import streamlit.components.v1 as components
+from PIL import Image
 
 from services import prompts
 from ui.components import sidebar
@@ -33,19 +33,27 @@ for message in [m for m in st.session_state.messages if m["role"] != "system"]:
             evidence = message["content"]
             page_number = evidence["page_number"]
             with st.expander(f"See page {page_number}", expanded=False):
-                st.caption("Relevant page from the textbook")
-                st.write(evidence["context"])
-                if evidence["page_pdf_data"]:
-                    pdf_base64 = base64.b64encode(evidence["page_pdf_data"]).decode("utf-8")
-                    pdf_embed = f"""
-                        <iframe
-                            src="data:application/pdf;base64,{pdf_base64}"
-                            width="100%"
-                            height="900"
-                            style="border: 1px solid #ddd; border-radius: 8px;"
-                        ></iframe>
-                    """
-                    components.html(pdf_embed, height=920, scrolling=True)
+                # st.caption(f"Page {page_number}")
+                if evidence["page_image_data"]:
+                    display_width = 600
+                    page_image = Image.open(io.BytesIO(evidence["page_image_data"]))
+                    if page_image.width > display_width:
+                        ratio = display_width / float(page_image.width)
+                        new_height = int(page_image.height * ratio)
+                        page_image = page_image.resize((display_width, new_height), Image.Resampling.LANCZOS)
+                    st.image(
+                        page_image,
+                        width='content',
+                    )
+                    st.download_button(
+                        label="Download page",
+                        data=evidence["page_image_data"],
+                        file_name=f"pragmatic_programmer_page_{page_number}.png",
+                        mime="image/png",
+                        key=f"download_page_{page_number}",
+                    )
+                else:
+                    st.info("The page image could not be rendered.")
 
     else:
         with st.chat_message(message["role"]):

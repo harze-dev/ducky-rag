@@ -33,16 +33,14 @@ async def ask_book(messages, prompt):
                 if rag_result is None:
                     rag_result = {
                         "answer": ":red[There was an error using retrieval augmented generation. Have you implemented the services.rag functionality?]",
-                        "context": "",
                         "page_number": "N/A",
-                        "page_pdf_data": None
+                        "page_image_data": None
                     }
 
                 # c. Extract returned values
                 answer = rag_result["answer"]
-                context = rag_result["context"]
                 page_number = rag_result["page_number"]
-                page_pdf_data = rag_result["page_pdf_data"]
+                page_image_data = rag_result["page_image_data"]
 
         # d. Clear spinner
         spinner_placeholder.empty()
@@ -51,11 +49,10 @@ async def ask_book(messages, prompt):
         # a. Show answer
         st.write(f"{answer}")
 
-        # b. Create evidence section only when a page image is available
+        # b. Store page image evidence for rendering in the chat history
         evidence = {
             "page_number": page_number,
-            "context": context,
-            "page_pdf_data": page_pdf_data,
+            "page_image_data": page_image_data,
         }
 
         # 6. Update chat history

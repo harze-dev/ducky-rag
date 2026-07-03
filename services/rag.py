@@ -2,10 +2,10 @@ import csv
 import io
 import numpy as np
 import os
+from functools import lru_cache
 import sentence_transformers
 import tiktoken as tkn
-from PIL import Image
-from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2 import PdfReader
 from openai import OpenAI
 from pdf2image import convert_from_path
 from sklearn.neighbors import NearestNeighbors
@@ -25,7 +25,7 @@ async def ask_book(query: str, return_image: bool = False):
         "answer": str,           # Generated response using context
         "page_number": int,      # Page where context was found
         "context": str,          # Text chunk used for answer
-        "page_pdf_data": bytes   # Optional one-page PDF if return_image=True
+        "page_image_data": bytes # Optional page image if return_image=True
     }
     """
 
@@ -95,19 +95,19 @@ Provide a concise answer."""
     answer, _ = llm.converse_sync(prompt, [])
 
     # Optional page image extraction
-    page_pdf_data = None
+    page_image_data = None
     if return_image:
         try:
-            page_pdf_data = __extract_page_as_pdf(pdf_path, page_number)
+            page_image_data = __extract_page_as_image(pdf_path, page_number)
         except Exception:
-            page_pdf_data = None
+            page_image_data = None
 
     # Return the assembled result
     return {
         "answer": answer,
         "page_number": page_number,
         "context": context,
-        "page_pdf_data": page_pdf_data,
+        "page_image_data": page_image_data,
     }
 
 def __extract_text_from_pdf(pdf_path: str) -> List[Tuple[int, str]]:
@@ -123,17 +123,27 @@ def __extract_text_from_pdf(pdf_path: str) -> List[Tuple[int, str]]:
             pages.append((i + 1, text or ""))
     return pages
 
-def __extract_page_as_pdf(pdf_path: str, page_number: int) -> bytes:
+_PAGE_IMAGE_CACHE: dict[tuple[str, int], bytes] = {}
+
+
+def __extract_page_as_image(pdf_path: str, page_number: int) -> bytes:
     """
-    Extract a single PDF page as a one-page PDF.
-    Returns: Raw PDF bytes for the selected page.
+    Render a single PDF page as a high-resolution PNG image.
+    Returns: Raw PNG image data for the selected page.
     """
-    reader = PdfReader(pdf_path)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[page_number - 1])
+    cache_key = (pdf_path, page_number)
+    if cache_key in _PAGE_IMAGE_CACHE:
+        return _PAGE_IMAGE_CACHE[cache_key]
+
+    images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number, dpi=220)
+    if not images:
+        return b""
+
     buf = io.BytesIO()
-    writer.write(buf)
-    return buf.getvalue()
+    images[0].save(buf, format="PNG")
+    data = buf.getvalue()
+    _PAGE_IMAGE_CACHE[cache_key] = data
+    return data
 
 async def __chunk_prompt(pages_text: List[Tuple[int, str]], chunk_size: int = 1500, overlap: int = 50) -> List[Tuple[int, str]]:
     """
